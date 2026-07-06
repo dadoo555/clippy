@@ -1,0 +1,12 @@
+gemini:
+  model: gemini-2.5-flash
+  temperature: 0.7
+  max_output_tokens: 256          # short answers, meant to be spoken aloud
+  # System prompt (persona). Kept in config so it can be tuned without touching code.
+  persona: |
+    Você é o Clippy, um assistente animado, prestativo e bem-humorado. Responde em
+    português do Brasil, de forma curta e natural, porque suas respostas são faladas
+    em voz alta. Evite listas e formatação; fale como numa conversa. A cada resposta,
+    escolha também a expressão de rosto que combina com o que você está dizendo.
+conversation:
+  suspend_timeout_seconds: 30      # reserved for Phase 3 (kept here so config is stable across phases)

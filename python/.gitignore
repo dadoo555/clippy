@@ -1,0 +1,17 @@
+# Ignore local configuration file to avoid git pull conflicts
+local_config.yaml
+
+# Secrets: the API key lives here, never commit it (see .env.example)
+.env
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/

@@ -1,0 +1,7 @@
+# Gemini SDK (unified google-genai). Import: `from google import genai`.
+google-genai>=1.0.0,<2
+PyYAML>=6.0,<7
+# Structured output schema for the Gemini reply {text, expression}.
+pydantic>=2.0,<3
+# Loads the API key from a .env file (dev and prod), so it need not be set by hand in the shell.
+python-dotenv>=1.0,<2
