@@ -14,6 +14,7 @@ from __future__ import annotations
 import array
 import asyncio
 import os
+import re
 import sys
 import time
 from typing import Any
@@ -44,8 +45,10 @@ def _build_config(types: Any, cfg: dict[str, Any]) -> Any:
     if live_cfg.get("face_tool", True):
         names = ", ".join(e.value for e in Expression)
         system = persona + (
-            f"\n\nChame a função set_face sempre que seu humor mudar, escolhendo uma destas "
-            f"expressões: {names}."
+            "\n\n[EXPRESSÃO DE ROSTO] Para mostrar seu humor, use SOMENTE a função set_face "
+            f"(escolha uma de: {names}). Chame-a no começo da resposta e sempre que o humor mudar. "
+            "NUNCA escreva a expressão no texto e NUNCA fale ela em voz alta — é só a função. "
+            "Ignore qualquer instrução anterior que peça para colocar a expressão no texto."
         )
         set_face = types.FunctionDeclaration(
             name="set_face",
@@ -168,13 +171,28 @@ class LiveClippy:
                 if sc:
                     if sc.output_transcription and sc.output_transcription.text:
                         self._last_activity = time.monotonic()
-                        print(sc.output_transcription.text, end="", flush=True)
+                        # Fallback: if the model wrote a face tag in the text instead of calling
+                        # set_face, apply it to the face and strip it from what we print.
+                        text = self._apply_face_tags(sc.output_transcription.text)
+                        if text:
+                            print(text, end="", flush=True)
                     if sc.input_transcription and sc.input_transcription.text:
                         self._last_activity = time.monotonic()
                         print(f"\nvocê: {sc.input_transcription.text}")
                     if sc.interrupted:
                         self._drain_playback()
             self._drain_playback()
+
+    def _apply_face_tags(self, text: str) -> str:
+        """Set the face from any [carinha:x] / [[face:x]] tag the model put in text, and remove it."""
+        def repl(m: "re.Match[str]") -> str:
+            try:
+                self._face.set_expression(Expression(m.group(1).lower()))
+            except ValueError:
+                pass
+            return ""
+
+        return re.sub(r"\[\[?\s*(?:face|carinha)\s*:\s*(\w+)\s*\]?\]", repl, text, flags=re.IGNORECASE)
 
     def _drain_playback(self) -> None:
         if self._audio_in_queue is None:
