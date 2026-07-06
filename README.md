@@ -71,6 +71,36 @@ criado a partir de `python/config.yaml` — edite o **local** para ajustar model
 
 ---
 
+## 🎤 Falar e ouvir (Fase 2 — voz)
+
+Mesma conversa, mas por **microfone e alto-falante**. Você fala, o Clippy transcreve (Whisper),
+pensa (Gemini) e responde **em voz alta** (TTS). A transcrição também aparece na tela.
+
+```bash
+python -m clippy devices            # lista mic/alto-falante (para escolher no config, se precisar)
+python -m clippy chat --voice       # conversa por voz com o Gemini
+python -m clippy chat --voice --dry-run  # testa só o áudio (mic->Whisper->eco->voz), sem Gemini
+```
+
+Como funciona (tudo local, exceto o TTS padrão):
+- **Entrada (aperta-e-fala):** aperte **ENTER**, fale, e a **pausa** encerra a frase → **faster-whisper**
+  (sem PyTorch) transcreve. Você também pode **digitar** em vez de falar (fallback, e para `sair`).
+- **Saída:** **edge-tts** (voz PT-BR online, padrão) ou **Piper** (offline, para a placa).
+
+Ajustes em `config.yaml` (seção `voice`): modelo do Whisper (`stt.model`: `tiny`/`base`/`small`),
+sensibilidade (`silence_threshold`, `silence_ms`), dispositivos (`input_device`/`output_device`) e
+motor de TTS (`tts.engine`, `tts.edge_voice`). Para encerrar: fale/**digite** "sair"/"tchau", ou `Ctrl-C`.
+
+> Já tem um `local_config.yaml` de antes? Ele não traz a seção `voice` nova — o app usa valores
+> padrão mesmo assim, mas para editar os knobs apague `python/local_config.yaml` (ele é recriado)
+> ou copie a seção `voice:` do `config.yaml`.
+
+**Dependências extras na placa (Debian):** o `sounddevice` precisa do PortAudio
+(`sudo apt install libportaudio2`). Para TTS offline: `pip install piper-tts` e aponte
+`voice.tts.piper_model` para um `.onnx` de voz PT-BR (aí `voice.tts.engine: piper`).
+
+---
+
 ## 🙂 O rosto (hardware)
 
 O rosto é um **ELEGOO MAX7219 Dot Matrix Module V02** (painel de LED **8×8**), dirigido pelo
@@ -92,7 +122,7 @@ roda toda no MPU.
 | Arquivo | Papel | Vira, nas próximas fases |
 |---|---|---|
 | `clippy/brain.py` | Gemini + saída estruturada `{texto, expressão}` | — |
-| `clippy/io_channel.py` | Entrada/fala (texto agora) | `VoiceIOChannel` (Whisper + Piper) |
+| `clippy/io_channel.py` | Entrada/fala em texto | ✅ `voice_channel.py` (Whisper + TTS) já existe |
 | `clippy/face.py` | Mostra a expressão (terminal agora) | `MatrixFaceDisplay` (MAX7219 via Bridge) |
 | `clippy/session.py` | O loop de conversa | Máquina de estados + timer de 30 s |
 | `clippy/expressions.py` | Catálogo fixo de carinhas | Espelhado nos bitmaps do MCU |
@@ -104,8 +134,8 @@ de voz e de hardware encaixam sem tocar no resto.
 
 ## 🗺️ Roadmap
 
-1. **Base (esta):** loop de conversa por texto com o Gemini + escolha de expressão. ✅
-2. **Voz:** Silero VAD + faster-whisper na entrada, Piper na saída.
+1. **Base:** loop de conversa por texto com o Gemini + escolha de expressão. ✅
+2. **Voz:** faster-whisper na entrada, TTS (edge-tts/Piper) na saída, VAD por energia. ✅
 3. **Wake word + estados:** Porcupine ("clippy"), máquina de estados, timer de 30 s, botão
    liga/desliga no MCU.
 4. **Rosto:** sketch do MCU dirigindo o MAX7219 8×8 via Arduino Router Bridge.

@@ -42,8 +42,24 @@ def _cmd_chat(args: argparse.Namespace) -> int:
             print(str(exc), file=sys.stderr)
             return 1
 
-    session = ConversationSession(brain, TextIOChannel(), TextFaceDisplay())
+    if args.voice:
+        # Imported lazily so text mode never loads the heavy audio/STT stack.
+        from .voice_channel import VoiceIOChannel
+
+        io = VoiceIOChannel(cfg)
+    else:
+        io = TextIOChannel()
+
+    session = ConversationSession(brain, io, TextFaceDisplay())
     session.run()
+    return 0
+
+
+def _cmd_devices(args: argparse.Namespace) -> int:
+    """List audio devices so you can set voice.input_device / voice.output_device in config."""
+    import sounddevice as sd
+
+    print(sd.query_devices())
     return 0
 
 
@@ -53,16 +69,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=str, default=None, help="Path to config YAML")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    chat_p = sub.add_parser("chat", help="Loop de conversa por texto com o Gemini")
+    chat_p = sub.add_parser("chat", help="Loop de conversa com o Gemini (texto ou voz)")
     chat_p.add_argument(
         "--dry-run",
         action="store_true",
         help="Modo offline: ecoa a entrada sem chamar a API (não precisa de chave)",
     )
+    chat_p.add_argument(
+        "--voice",
+        action="store_true",
+        help="Entrada por microfone (VAD + Whisper) e saída falada (TTS)",
+    )
+
+    sub.add_parser("devices", help="Lista os dispositivos de áudio (para escolher mic/alto-falante)")
 
     args = parser.parse_args(argv)
     if args.command == "chat":
         return _cmd_chat(args)
+    if args.command == "devices":
+        return _cmd_devices(args)
     return 1
 
 

@@ -1,7 +1,7 @@
 gemini:
   model: gemini-2.5-flash
   temperature: 0.7
-  max_output_tokens: 256          # short answers, meant to be spoken aloud
+  max_output_tokens: 512          # room for the JSON reply (thinking is disabled in code)
   # System prompt (persona). Kept in config so it can be tuned without touching code.
   persona: |
     Você é o Clippy, um assistente animado, prestativo e bem-humorado. Responde em
@@ -10,3 +10,20 @@ gemini:
     escolha também a expressão de rosto que combina com o que você está dizendo.
 conversation:
   suspend_timeout_seconds: 30      # reserved for Phase 3 (kept here so config is stable across phases)
+voice:
+  sample_rate: 16000               # capture rate (Whisper wants 16 kHz)
+  input_device: null               # sounddevice input index/name (null = system default)
+  output_device: null              # sounddevice output index/name (null = system default)
+  # Press-to-talk with energy-based silence stop (no native deps):
+  silence_threshold: null          # RMS threshold; null = auto-calibrate from ambient noise
+  silence_ms: 700                  # trailing silence that ends the utterance
+  max_utterance_s: 12              # hard cap on one recording
+  no_speech_giveup_s: 4            # if nobody speaks after ENTER, give up and re-prompt
+  stt:
+    model: base                    # faster-whisper size: tiny (rápido) / base / small (preciso)
+    language: pt
+    compute_type: int8             # int8 = light CPU (good for the UNO Q)
+  tts:
+    engine: edge                   # edge (online, easy) | piper (offline, for the board)
+    edge_voice: pt-BR-AntonioNeural
+    piper_model: ""                # path to a Piper .onnx voice (used when engine: piper)

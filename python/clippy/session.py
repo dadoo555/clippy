@@ -6,12 +6,19 @@ This is the single place the Phase 3 state machine (SUSPENSO/OUVINDO/PENSANDO/FA
 
 from __future__ import annotations
 
+import re
+
 from .brain import Brain
 from .face import FaceDisplay
 from .io_channel import IOChannel
 
-# Words that end the conversation when typed alone.
+# Words that end the conversation when said/typed alone.
 _EXIT_WORDS = {"sair", "tchau", "quit", "exit"}
+
+
+def _is_exit(text: str) -> bool:
+    # Strip punctuation/casing so voice transcriptions like "Tchau." also match.
+    return re.sub(r"[^\w]", "", text.lower()) in _EXIT_WORDS
 
 
 class ConversationSession:
@@ -30,7 +37,7 @@ class ConversationSession:
                 user_text = user_text.strip()
                 if not user_text:
                     continue
-                if user_text.lower() in _EXIT_WORDS:
+                if _is_exit(user_text):
                     break
 
                 reply = self._brain.reply(user_text)

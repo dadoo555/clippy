@@ -5,3 +5,10 @@ PyYAML>=6.0,<7
 pydantic>=2.0,<3
 # Loads the API key from a .env file (dev and prod), so it need not be set by hand in the shell.
 python-dotenv>=1.0,<2
+# Voice (Phase 2): STT (faster-whisper, no PyTorch), mic/playback, online TTS, audio decode.
+faster-whisper>=1.0,<2
+sounddevice>=0.4,<1
+edge-tts>=7,<8
+numpy>=1.24,<3
+av>=11
+# Offline TTS for the board is optional and installed separately: pip install piper-tts

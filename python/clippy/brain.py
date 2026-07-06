@@ -7,7 +7,9 @@ response schema. `EchoBrain` is an offline stub for `--dry-run` (no API key need
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
 from typing import Any, Protocol, runtime_checkable
 
@@ -26,6 +28,25 @@ class ClippyReply(BaseModel):
 
 # Spoken-friendly fallback used when the API call fails or returns nothing parseable.
 _FALLBACK = ClippyReply(text="Ops, me perdi aqui, pode repetir?", expression=Expression.confuso)
+
+
+def _salvage_reply(raw: str) -> ClippyReply | None:
+    """Recover a usable reply from truncated/partial JSON (e.g. cut off before the closing brace)."""
+    match = re.search(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+    if not match:
+        return None
+    try:
+        text = json.loads(f'"{match.group(1)}"')  # decode \n, \" etc.
+    except json.JSONDecodeError:
+        return None
+    expr = Expression.neutro
+    em = re.search(r'"expression"\s*:\s*"(\w+)"', raw)
+    if em:
+        try:
+            expr = Expression(em.group(1))
+        except ValueError:
+            pass
+    return ClippyReply(text=text, expression=expr)
 
 
 @runtime_checkable
@@ -67,7 +88,10 @@ class ClippyBrain:
             config=types.GenerateContentConfig(
                 system_instruction=gemini_cfg.get("persona", ""),
                 temperature=gemini_cfg.get("temperature", 0.7),
-                max_output_tokens=gemini_cfg.get("max_output_tokens", 256),
+                max_output_tokens=gemini_cfg.get("max_output_tokens", 512),
+                # Disable "thinking": on 2.5-flash it eats the token budget and truncates the
+                # JSON reply. Short spoken answers don't need it, and it's faster without it.
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
                 response_mime_type="application/json",
                 response_schema=ClippyReply,
             ),
@@ -89,13 +113,16 @@ class ClippyBrain:
         if isinstance(parsed, ClippyReply):
             return parsed
 
-        # parsed came back empty: try to parse the raw JSON, else report why.
-        text = getattr(resp, "text", None)
-        if text:
+        # parsed came back empty: try strict JSON, then salvage a truncated reply, else report.
+        raw = getattr(resp, "text", None)
+        if raw:
             try:
-                return ClippyReply.model_validate_json(text)
-            except Exception as exc:
-                print(f"[erro parse] {type(exc).__name__}: {exc} | bruto: {text!r}", file=sys.stderr)
+                return ClippyReply.model_validate_json(raw)
+            except Exception:
+                salvaged = _salvage_reply(raw)
+                if salvaged is not None:
+                    return salvaged
+                print(f"[erro parse] resposta incompleta | bruto: {raw!r}", file=sys.stderr)
         else:
             print("[erro Gemini] resposta vazia (sem texto) — possível bloqueio de segurança "
                   "ou modelo/schema não suportado.", file=sys.stderr)
