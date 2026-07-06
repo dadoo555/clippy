@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,7 @@ class WakeWord:
         wake_cfg = cfg.get("wake", {})
         self._device = cfg.get("live", {}).get("input_device")
         self._phrases = [p.lower() for p in wake_cfg.get("phrases", ["clip", "clipe", "clipi", "clippy", "clique"])]
+        self._debug = bool(wake_cfg.get("debug", True))
 
         raw = wake_cfg.get("model_path", "")
         model_path = self._find_folder(raw)
@@ -100,6 +102,7 @@ class WakeWord:
                 samplerate=_SAMPLE_RATE, channels=1, dtype="int16", blocksize=_FRAME,
                 device=self._device,
             ) as stream:
+                last = ""
                 while True:
                     data, _ov = stream.read(_FRAME)
                     chunk = bytes(data)
@@ -107,7 +110,14 @@ class WakeWord:
                         text = json.loads(rec.Result()).get("text", "")
                     else:
                         text = json.loads(rec.PartialResult()).get("partial", "")
+                    # Show what Vosk hears so you can tell if it's a mic issue (hears nothing) or a
+                    # phrase-tuning issue (hears something, but wake.phrases don't match it).
+                    if self._debug and text and text != last:
+                        print(f"[vosk ouviu] {text!r}", file=sys.stderr)
+                        last = text
                     if text and self._matches(text):
+                        if self._debug:
+                            print("[wake] acordando!", file=sys.stderr)
                         return True
         except KeyboardInterrupt:
             return False

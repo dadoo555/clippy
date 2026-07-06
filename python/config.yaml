@@ -33,3 +33,4 @@ wake:
   # Outros modelos: https://alphacephei.com/vosk/models
   model_path: "./vosk-model-small-en-us-0.15"
   phrases: [clip, clipe, clipi, clippy, clique]
+  debug: true                      # imprime o que o Vosk ouve (ajuda a ajustar phrases / achar o mic)

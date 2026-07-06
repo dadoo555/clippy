@@ -179,6 +179,8 @@ class LiveClippy:
                     if sc.input_transcription and sc.input_transcription.text:
                         self._last_activity = time.monotonic()
                         print(f"\nvocê: {sc.input_transcription.text}")
+                    if sc.grounding_metadata:
+                        print("  [🔎 busca usada]", file=sys.stderr)
                     if sc.interrupted:
                         self._drain_playback()
             self._drain_playback()
@@ -205,6 +207,7 @@ class LiveClippy:
 
         responses = []
         for fc in tool_call.function_calls or []:
+            print(f"  [função {fc.name}({dict(fc.args or {})})]", file=sys.stderr)
             if fc.name == "set_face":
                 name = (fc.args or {}).get("expression", "neutro")
                 try:
