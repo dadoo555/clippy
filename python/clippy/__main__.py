@@ -1,8 +1,10 @@
 """CLI entry point for Clippy.
 
 Usage (with venv active, from the python/ folder):
-  python -m clippy chat              # real Gemini conversation (needs GEMINI_API_KEY)
+  python -m clippy live              # real-time voice via the Gemini Live API (audio in/out)
+  python -m clippy chat              # text conversation with Gemini (needs GEMINI_API_KEY)
   python -m clippy chat --dry-run    # offline echo, no API key needed (tests the plumbing)
+  python -m clippy devices           # list audio devices
 """
 
 from __future__ import annotations
@@ -42,21 +44,20 @@ def _cmd_chat(args: argparse.Namespace) -> int:
             print(str(exc), file=sys.stderr)
             return 1
 
-    if args.voice:
-        # Imported lazily so text mode never loads the heavy audio/STT stack.
-        from .voice_channel import VoiceIOChannel
-
-        io = VoiceIOChannel(cfg)
-    else:
-        io = TextIOChannel()
-
-    session = ConversationSession(brain, io, TextFaceDisplay())
+    session = ConversationSession(brain, TextIOChannel(), TextFaceDisplay())
     session.run()
     return 0
 
 
+def _cmd_live(args: argparse.Namespace) -> int:
+    # Imported lazily so `chat` never loads the audio stack.
+    from .live import run_live
+
+    return run_live(load_config(args.config))
+
+
 def _cmd_devices(args: argparse.Namespace) -> int:
-    """List audio devices so you can set voice.input_device / voice.output_device in config."""
+    """List audio devices so you can pick a mic/speaker."""
     import sounddevice as sd
 
     print(sd.query_devices())
@@ -65,25 +66,24 @@ def _cmd_devices(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_output()
-    parser = argparse.ArgumentParser(description="Clippy: assistente de conversa (Fase 1, texto).")
+    parser = argparse.ArgumentParser(description="Clippy: assistente de voz (Gemini).")
     parser.add_argument("--config", type=str, default=None, help="Path to config YAML")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    chat_p = sub.add_parser("chat", help="Loop de conversa com o Gemini (texto ou voz)")
+    sub.add_parser("live", help="Conversa por voz em tempo real (Gemini Live API)")
+
+    chat_p = sub.add_parser("chat", help="Conversa por texto com o Gemini")
     chat_p.add_argument(
         "--dry-run",
         action="store_true",
         help="Modo offline: ecoa a entrada sem chamar a API (não precisa de chave)",
     )
-    chat_p.add_argument(
-        "--voice",
-        action="store_true",
-        help="Entrada por microfone (VAD + Whisper) e saída falada (TTS)",
-    )
 
-    sub.add_parser("devices", help="Lista os dispositivos de áudio (para escolher mic/alto-falante)")
+    sub.add_parser("devices", help="Lista os dispositivos de áudio")
 
     args = parser.parse_args(argv)
+    if args.command == "live":
+        return _cmd_live(args)
     if args.command == "chat":
         return _cmd_chat(args)
     if args.command == "devices":

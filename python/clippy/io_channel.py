@@ -1,7 +1,6 @@
-"""User I/O channel: how Clippy reads the user and speaks back.
+"""User I/O channel for the text `chat` mode: how Clippy reads the user and speaks back.
 
-Phase 1 is terminal text. Phase 2 adds `VoiceIOChannel` (faster-whisper for input,
-Piper for output) implementing the same Protocol, so nothing else changes.
+Voice now lives in the real-time Live API path (`clippy/live.py`), separate from this text loop.
 """
 
 from __future__ import annotations

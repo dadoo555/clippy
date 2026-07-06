@@ -51,48 +51,38 @@ pip install -r requirements.txt
 
 ---
 
-## 🏃 Rodar
+## 🎤 Rodar por voz (Gemini Live API)
+
+O jeito principal: **conversa em tempo real**, áudio entra e áudio sai. Você fala, o Clippy
+**responde falando** com a voz nativa do Gemini, com interrupções e busca na internet.
 
 ```bash
-python -m clippy chat            # conversa real com o Gemini (precisa da GEMINI_API_KEY)
-python -m clippy chat --dry-run  # modo offline: ecoa a entrada sem chave nem internet
+python -m clippy devices   # lista mic/alto-falante (para escolher no config, se precisar)
+python -m clippy live      # conversa por voz em tempo real (precisa da GEMINI_API_KEY)
 ```
 
-Exemplo de sessão:
+Fale à vontade; aperte `Ctrl-C` para sair. Como funciona:
+- **Áudio↔áudio streaming** via `client.aio.live.connect()` (mic a 16 kHz → Gemini → voz a 24 kHz).
+- **Busca na internet** (`gemini.web_search`) — clima/notícias/fatos reais, não inventados.
+- **Carinha decidida pelo Gemini** por uma função `set_face` (o modelo a chama quando muda de
+  humor); hoje imprime no terminal, e vira o MAX7219 pela Bridge na fase do rosto.
+- **Memória** durante a sessão (janela deslizante nativa); zera ao reiniciar.
 
-```
-você > Oi, quem é você?
-[carinha: feliz]
-clippy > Oi! Eu sou o Clippy, seu ajudante animado. Como posso te ajudar hoje?
-```
+Ajustes em `config.yaml` (seção `live`): `model`, `voice` (timbre: Leda, Puck, Kore...),
+`api_version`, `face_tool`. Se o modelo do padrão der erro para sua chave, troque `live.model`
+(o comentário no config lista alternativas).
 
-Digite `sair` (ou `Ctrl-D`) para encerrar. Na primeira execução, `python/local_config.yaml` é
-criado a partir de `python/config.yaml` — edite o **local** para ajustar modelo e persona.
+> ⚠️ Já tem um `python/local_config.yaml` antigo? Ele **não** traz a seção `live`. Apague-o (ele
+> se recria a partir de `config.yaml`) para pegar as opções novas.
 
----
-
-## 🎤 Falar e ouvir (Fase 2 — voz)
-
-Mesma conversa, mas por **microfone e alto-falante**. Você fala, o Clippy transcreve (Whisper),
-pensa (Gemini) e responde **em voz alta** (TTS). A transcrição também aparece na tela.
+## 💬 Rodar por texto (opcional, para testar)
 
 ```bash
-python -m clippy devices            # lista mic/alto-falante (para escolher no config, se precisar)
-python -m clippy chat --voice       # conversa por voz com o Gemini
-python -m clippy chat --voice --dry-run  # testa só o áudio (mic->Whisper->eco->voz), sem Gemini
+python -m clippy chat            # conversa por texto com o Gemini (precisa da chave)
+python -m clippy chat --dry-run  # offline: ecoa a entrada, sem chave nem internet
 ```
 
-Como funciona:
-- **Entrada (aperta-e-fala):** aperte **ENTER**, fale, e aperte **ENTER de novo para parar** — você
-  controla o fim, então não corta a frase no meio. Também dá pra **digitar** em vez de falar
-  (fallback, e para `sair`). Duas formas de virar texto (`voice.stt_engine`):
-  - `gemini` (padrão): manda o **áudio direto pro Gemini** (sem Whisper, sem baixar modelo).
-  - `whisper`: transcreve **local/offline** com faster-whisper e mostra `você (voz) > ...` na tela
-    (bom para a placa, para `--dry-run` e para ver o que foi entendido).
-- **Saída:** **edge-tts** (voz PT-BR online, padrão) ou **Piper** (offline, para a placa).
-- **Memória:** o Clippy lembra da conversa **durante a sessão** e **zera quando você reinicia**.
-- **Busca na internet:** ligada (`gemini.web_search`) — clima, notícias e fatos vêm do Google
-  Search em vez de serem inventados.
+Útil para validar chave/persona sem áudio. Digite `sair` (ou `Ctrl-D`) para encerrar.
 
 Ajustes em `config.yaml` (seção `voice`): `stt_engine` (gemini/whisper), modelo do Whisper
 (`stt.model`), sensibilidade (`silence_threshold`, `silence_ms`), dispositivos
@@ -130,24 +120,21 @@ roda toda no MPU.
 
 ## 🧩 Organização do código (pontos de extensão)
 
-| Arquivo | Papel | Vira, nas próximas fases |
-|---|---|---|
-| `clippy/brain.py` | Gemini + saída estruturada `{texto, expressão}` | — |
-| `clippy/io_channel.py` | Entrada/fala em texto | ✅ `voice_channel.py` (Whisper + TTS) já existe |
-| `clippy/face.py` | Mostra a expressão (terminal agora) | `MatrixFaceDisplay` (MAX7219 via Bridge) |
-| `clippy/session.py` | O loop de conversa | Máquina de estados + timer de 30 s |
-| `clippy/expressions.py` | Catálogo fixo de carinhas | Espelhado nos bitmaps do MCU |
-
-Cada subsistema é um `Protocol` (mesmo molde do projeto irmão `taubeerkennung`), então as versões
-de voz e de hardware encaixam sem tocar no resto.
+| Arquivo | Papel |
+|---|---|
+| `clippy/live.py` | **Modo principal:** conversa por voz em tempo real (Gemini Live API) |
+| `clippy/brain.py` | Modo texto: Gemini + busca + carinha por tag `[[face:...]]` |
+| `clippy/face.py` | Mostra a expressão (terminal agora → `MatrixFaceDisplay` no MAX7219) |
+| `clippy/expressions.py` | Catálogo fixo de carinhas (espelhado nos bitmaps do MCU) |
+| `clippy/session.py`, `io_channel.py` | Loop e I/O do modo texto |
 
 ---
 
 ## 🗺️ Roadmap
 
-1. **Base:** loop de conversa por texto com o Gemini + escolha de expressão. ✅
-2. **Voz:** faster-whisper na entrada, TTS (edge-tts/Piper) na saída, VAD por energia. ✅
-3. **Wake word + estados:** Porcupine ("clippy"), máquina de estados, timer de 30 s, botão
-   liga/desliga no MCU.
-4. **Rosto:** sketch do MCU dirigindo o MAX7219 8×8 via Arduino Router Bridge.
-5. **Polimento:** LEDs/matriz da placa, latência, ajuste da persona.
+1. **Base:** conversa por texto com o Gemini + escolha de expressão. ✅
+2. **Voz em tempo real:** Gemini Live API (áudio↔áudio, busca, carinha via `set_face`). ✅
+3. **Wake word + estados:** palavra "clippy", máquina de estados, timer de 30 s, botão no MCU
+   (abrir/fechar a sessão Live).
+4. **Rosto:** sketch do MCU dirigindo o MAX7219 8×8 via Arduino Router Bridge (`MatrixFaceDisplay`).
+5. **Polimento:** LEDs/matriz da placa, latência, ajuste da persona/voz.
