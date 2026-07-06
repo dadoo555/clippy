@@ -1,66 +1,67 @@
-"""The conversational brain: Gemini with structured {text, expression} output.
+"""The conversational brain: Gemini with Google Search grounding and a face tag.
 
-`ClippyBrain` keeps the chat history in memory (the google-genai chat session resends
-it every turn) and constrains the model to the fixed `Expression` catalog via a Pydantic
-response schema. `EchoBrain` is an offline stub for `--dry-run` (no API key needed).
+Input can be typed text or a recorded audio utterance. We do NOT use response_schema/JSON here
+because it is incompatible with the google_search grounding tool; instead the model ends each
+reply with a `[[face:nome]]` tag that we parse out. History is kept in memory and resent every
+turn (bounded window), so the conversation has normal memory that resets when the program restarts.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
-
-from pydantic import BaseModel
 
 from .env import load_env
 from .expressions import Expression
+from .io_channel import AudioInput
+
+# Keep at most this many history entries (user+model each count as one) to bound token cost.
+_MAX_HISTORY = 24
+
+# Appended to the persona in code so the face tag works even with an old local_config.yaml.
+_EXPR_NAMES = ", ".join(e.value for e in Expression)
+_FACE_INSTRUCTION = (
+    "Ao final de CADA resposta, escreva a expressão de rosto que combina, exatamente no formato "
+    f"[[face:NOME]] (colchetes duplos), onde NOME é uma destas: {_EXPR_NAMES}. "
+    "Não comente a tag; apenas coloque-a no fim. Exemplo: 'Claro, posso ajudar! [[face:feliz]]'"
+)
 
 
-class ClippyReply(BaseModel):
-    """One turn of Clippy's answer: what to say and which face to show."""
-
+@dataclass
+class ClippyReply:
     text: str
     expression: Expression
 
 
-# Spoken-friendly fallback used when the API call fails or returns nothing parseable.
 _FALLBACK = ClippyReply(text="Ops, me perdi aqui, pode repetir?", expression=Expression.confuso)
 
 
-def _salvage_reply(raw: str) -> ClippyReply | None:
-    """Recover a usable reply from truncated/partial JSON (e.g. cut off before the closing brace)."""
-    match = re.search(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
-    if not match:
-        return None
-    try:
-        text = json.loads(f'"{match.group(1)}"')  # decode \n, \" etc.
-    except json.JSONDecodeError:
-        return None
+def _parse_face(raw: str) -> ClippyReply:
+    """Split the model text into spoken text + expression from the [[face:nome]] tag."""
     expr = Expression.neutro
-    em = re.search(r'"expression"\s*:\s*"(\w+)"', raw)
-    if em:
+    m = re.search(r"\[\[\s*face\s*:\s*(\w+)\s*\]\]", raw, re.IGNORECASE)
+    if m:
         try:
-            expr = Expression(em.group(1))
+            expr = Expression(m.group(1).lower())
         except ValueError:
             pass
-    return ClippyReply(text=text, expression=expr)
+    clean = re.sub(r"\[\[\s*face\s*:\s*\w+\s*\]\]", "", raw, flags=re.IGNORECASE).strip()
+    return ClippyReply(text=clean or raw.strip(), expression=expr)
 
 
 @runtime_checkable
 class Brain(Protocol):
-    """A source of Clippy replies. Text now, same interface once voice is added."""
-
-    def reply(self, user_text: str) -> ClippyReply: ...
+    def reply(self, user_input: "str | AudioInput") -> ClippyReply: ...
 
 
 class ClippyBrain:
-    """Gemini-backed brain. Reads GEMINI_API_KEY from the environment (never hardcoded)."""
+    """Gemini-backed brain with web search. Reads GEMINI_API_KEY from the environment."""
 
     def __init__(self, cfg: dict[str, Any]) -> None:
-        load_env()  # populate os.environ from python/.env if present
+        load_env()
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError(
@@ -72,66 +73,62 @@ class ClippyBrain:
                 '  3. bash/Debian: export GEMINI_API_KEY="sua-chave"'
             )
 
-        # Imported here so `--dry-run` works even without google-genai installed.
         from google import genai
         from google.genai import types
 
+        self._types = types
         gemini_cfg = cfg.get("gemini", {})
         self._model = gemini_cfg.get("model", "gemini-2.5-flash")
-
-        # Keep the client on self: if it is only a local, GC closes its HTTP transport and the
-        # chat then fails with "Cannot send a request, as the client has been closed."
         self._client = genai.Client(api_key=api_key)
-        # A chat session keeps history in memory and resends it on every send_message().
-        self._chat = self._client.chats.create(
-            model=self._model,
-            config=types.GenerateContentConfig(
-                system_instruction=gemini_cfg.get("persona", ""),
-                temperature=gemini_cfg.get("temperature", 0.7),
-                max_output_tokens=gemini_cfg.get("max_output_tokens", 512),
-                # Disable "thinking": on 2.5-flash it eats the token budget and truncates the
-                # JSON reply. Short spoken answers don't need it, and it's faster without it.
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-                response_mime_type="application/json",
-                response_schema=ClippyReply,
-            ),
+
+        persona = gemini_cfg.get("persona", "")
+        tools = []
+        if gemini_cfg.get("web_search", True):
+            # Real-time grounding so facts/weather/news are not hallucinated.
+            tools.append(types.Tool(google_search=types.GoogleSearch()))
+
+        self._config = types.GenerateContentConfig(
+            system_instruction=persona + "\n\n" + _FACE_INSTRUCTION,
+            temperature=gemini_cfg.get("temperature", 0.7),
+            max_output_tokens=gemini_cfg.get("max_output_tokens", 512),
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            tools=tools,
         )
+        self._history: list[Any] = []
 
-    def reply(self, user_text: str) -> ClippyReply:
-        """Send one user turn, return the parsed {text, expression}. Never raises on API errors.
+    def reply(self, user_input: "str | AudioInput") -> ClippyReply:
+        types = self._types
+        if isinstance(user_input, AudioInput):
+            parts = [types.Part.from_bytes(data=user_input.data, mime_type=user_input.mime_type)]
+        else:
+            parts = [types.Part(text=user_input)]
+        user_content = types.Content(role="user", parts=parts)
 
-        On failure it prints the real reason to stderr so problems are visible instead of
-        silently turning every turn into the fallback face.
-        """
         try:
-            resp = self._chat.send_message(user_text)
+            resp = self._client.models.generate_content(
+                model=self._model,
+                contents=self._history + [user_content],
+                config=self._config,
+            )
         except Exception as exc:
             print(f"[erro Gemini] {type(exc).__name__}: {exc}", file=sys.stderr)
             return _FALLBACK
 
-        parsed = getattr(resp, "parsed", None)
-        if isinstance(parsed, ClippyReply):
-            return parsed
-
-        # parsed came back empty: try strict JSON, then salvage a truncated reply, else report.
         raw = getattr(resp, "text", None)
-        if raw:
-            try:
-                return ClippyReply.model_validate_json(raw)
-            except Exception:
-                salvaged = _salvage_reply(raw)
-                if salvaged is not None:
-                    return salvaged
-                print(f"[erro parse] resposta incompleta | bruto: {raw!r}", file=sys.stderr)
-        else:
-            print("[erro Gemini] resposta vazia (sem texto) — possível bloqueio de segurança "
-                  "ou modelo/schema não suportado.", file=sys.stderr)
-        return _FALLBACK
+        if not raw:
+            print("[erro Gemini] resposta vazia (possível bloqueio de segurança).", file=sys.stderr)
+            return _FALLBACK
+
+        reply = _parse_face(raw)
+        # Keep the real turn in history (audio included) so memory works; trim to bound cost.
+        self._history.append(user_content)
+        self._history.append(types.Content(role="model", parts=[types.Part(text=reply.text)]))
+        self._history = self._history[-_MAX_HISTORY:]
+        return reply
 
     @property
     def history(self) -> Any:
-        """The chat history (for future use: on-screen text, debugging)."""
-        return self._chat.get_history()
+        return self._history
 
 
 class EchoBrain:
@@ -140,9 +137,10 @@ class EchoBrain:
     def __init__(self, cfg: dict[str, Any] | None = None) -> None:
         self._history: list[tuple[str, str]] = []
 
-    def reply(self, user_text: str) -> ClippyReply:
-        self._history.append(("user", user_text))
-        reply = ClippyReply(text=f"(eco) {user_text}", expression=Expression.neutro)
+    def reply(self, user_input: "str | AudioInput") -> ClippyReply:
+        heard = "[áudio]" if isinstance(user_input, AudioInput) else str(user_input)
+        reply = ClippyReply(text=f"(eco) {heard}", expression=Expression.neutro)
+        self._history.append(("user", heard))
         self._history.append(("clippy", reply.text))
         return reply
 

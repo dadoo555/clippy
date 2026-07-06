@@ -6,6 +6,10 @@ triggers recording, and we only use the energy threshold to detect when the user
 
 from __future__ import annotations
 
+import io
+import sys
+import threading
+import wave
 from typing import Any
 
 import numpy as np
@@ -16,6 +20,18 @@ _FRAME_MS = 30  # analysis frame size for the energy detector
 
 def _rms(frame: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.square(frame)) + 1e-12))
+
+
+def float_to_wav_bytes(samples: np.ndarray, sample_rate: int) -> bytes:
+    """Encode a mono float32 array (-1..1) as PCM16 WAV bytes (for sending audio to Gemini)."""
+    pcm16 = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm16.tobytes())
+    return buf.getvalue()
 
 
 class AudioIO:
@@ -45,41 +61,43 @@ class AudioIO:
         # Biased low: this only decides when the user has *stopped*, so a low value is safe.
         self.threshold = max(noise * 2.5, 0.008)
 
-    def record_after_trigger(self) -> np.ndarray | None:
-        """Record from now until trailing silence (or a cap). Returns float32 mono, or None."""
+    def record_until_enter(self) -> np.ndarray | None:
+        """Record on a background thread until the user presses ENTER. Returns float32 mono, or None.
+
+        The user controls exactly when the utterance ends — no energy-VAD guessing, so it never
+        cuts a sentence short.
+        """
         sr = self.sample_rate
         frame_len = int(sr * _FRAME_MS / 1000)
-        silence_needed = max(1, self._silence_ms // _FRAME_MS)
-        max_frames = int(self._max_utterance_s * 1000 / _FRAME_MS)
-        giveup_frames = int(self._no_speech_giveup_s * 1000 / _FRAME_MS)
-        threshold = self.threshold if self.threshold is not None else 0.008
+        frames: list[np.ndarray] = []
+        stop = threading.Event()
 
-        collected: list[np.ndarray] = []
-        silence_count = 0
-        heard_speech = False
+        def worker() -> None:
+            try:
+                with sd.InputStream(
+                    samplerate=sr, channels=1, dtype="float32", device=self._input_device
+                ) as stream:
+                    while not stop.is_set():
+                        data, _ov = stream.read(frame_len)
+                        frames.append(data[:, 0].copy())
+            except Exception as exc:
+                print(f"[erro áudio] {type(exc).__name__}: {exc}", file=sys.stderr)
 
-        with sd.InputStream(
-            samplerate=sr, channels=1, dtype="float32", device=self._input_device
-        ) as stream:
-            for i in range(max_frames):
-                data, _ov = stream.read(frame_len)
-                frame = data[:, 0].copy()
-                collected.append(frame)
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        try:
+            input()  # block until ENTER
+        except (EOFError, KeyboardInterrupt):
+            pass
+        stop.set()
+        thread.join(timeout=1.0)
 
-                if _rms(frame) > threshold:
-                    heard_speech = True
-                    silence_count = 0
-                else:
-                    silence_count += 1
-
-                if heard_speech and silence_count >= silence_needed:
-                    break
-                if not heard_speech and i >= giveup_frames:
-                    return None  # nobody spoke
-
-        if not heard_speech or not collected:
+        if not frames:
             return None
-        return np.concatenate(collected)
+        audio = np.concatenate(frames)
+        if len(audio) < 0.3 * sr:  # too short to be a real utterance
+            return None
+        return audio
 
     def play(self, samples: np.ndarray, sample_rate: int) -> None:
         sd.play(samples, sample_rate, device=self._output_device)

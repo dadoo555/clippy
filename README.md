@@ -82,14 +82,25 @@ python -m clippy chat --voice       # conversa por voz com o Gemini
 python -m clippy chat --voice --dry-run  # testa só o áudio (mic->Whisper->eco->voz), sem Gemini
 ```
 
-Como funciona (tudo local, exceto o TTS padrão):
-- **Entrada (aperta-e-fala):** aperte **ENTER**, fale, e a **pausa** encerra a frase → **faster-whisper**
-  (sem PyTorch) transcreve. Você também pode **digitar** em vez de falar (fallback, e para `sair`).
+Como funciona:
+- **Entrada (aperta-e-fala):** aperte **ENTER**, fale, e aperte **ENTER de novo para parar** — você
+  controla o fim, então não corta a frase no meio. Também dá pra **digitar** em vez de falar
+  (fallback, e para `sair`). Duas formas de virar texto (`voice.stt_engine`):
+  - `gemini` (padrão): manda o **áudio direto pro Gemini** (sem Whisper, sem baixar modelo).
+  - `whisper`: transcreve **local/offline** com faster-whisper e mostra `você (voz) > ...` na tela
+    (bom para a placa, para `--dry-run` e para ver o que foi entendido).
 - **Saída:** **edge-tts** (voz PT-BR online, padrão) ou **Piper** (offline, para a placa).
+- **Memória:** o Clippy lembra da conversa **durante a sessão** e **zera quando você reinicia**.
+- **Busca na internet:** ligada (`gemini.web_search`) — clima, notícias e fatos vêm do Google
+  Search em vez de serem inventados.
 
-Ajustes em `config.yaml` (seção `voice`): modelo do Whisper (`stt.model`: `tiny`/`base`/`small`),
-sensibilidade (`silence_threshold`, `silence_ms`), dispositivos (`input_device`/`output_device`) e
-motor de TTS (`tts.engine`, `tts.edge_voice`). Para encerrar: fale/**digite** "sair"/"tchau", ou `Ctrl-C`.
+Ajustes em `config.yaml` (seção `voice`): `stt_engine` (gemini/whisper), modelo do Whisper
+(`stt.model`), sensibilidade (`silence_threshold`, `silence_ms`), dispositivos
+(`input_device`/`output_device`) e TTS (`tts.engine`, `tts.edge_voice`). Para encerrar:
+fale/**digite** "sair"/"tchau", ou `Ctrl-C`.
+
+> Comparação Whisper local × áudio pro Gemini, e o plano do modo tempo-real (Live API), em
+> [`docs/PLANO_LIVE_API.md`](docs/PLANO_LIVE_API.md).
 
 > Já tem um `local_config.yaml` de antes? Ele não traz a seção `voice` nova — o app usa valores
 > padrão mesmo assim, mas para editar os knobs apague `python/local_config.yaml` (ele é recriado)

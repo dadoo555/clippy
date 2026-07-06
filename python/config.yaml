@@ -1,7 +1,8 @@
 gemini:
   model: gemini-2.5-flash
   temperature: 0.7
-  max_output_tokens: 512          # room for the JSON reply (thinking is disabled in code)
+  max_output_tokens: 512          # room for the reply (thinking is disabled in code)
+  web_search: true                # Google Search grounding (real facts/weather, not hallucinated)
   # System prompt (persona). Kept in config so it can be tuned without touching code.
   persona: |
     Você é o Clippy, um assistente animado, prestativo e bem-humorado. Responde em
@@ -19,8 +20,12 @@ voice:
   silence_ms: 700                  # trailing silence that ends the utterance
   max_utterance_s: 12              # hard cap on one recording
   no_speech_giveup_s: 4            # if nobody speaks after ENTER, give up and re-prompt
+  # How speech becomes text:
+  #   gemini  = send the audio straight to Gemini (no Whisper; transcription returned in reply)
+  #   whisper = transcribe locally with faster-whisper (offline; good for the board / --dry-run)
+  stt_engine: gemini
   stt:
-    model: base                    # faster-whisper size: tiny (rápido) / base / small (preciso)
+    model: base                    # faster-whisper size (only used when stt_engine: whisper)
     language: pt
     compute_type: int8             # int8 = light CPU (good for the UNO Q)
   tts:

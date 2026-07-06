@@ -31,16 +31,21 @@ class ConversationSession:
         print("Clippy pronto! (digite 'sair' ou Ctrl-D para encerrar)\n")
         try:
             while True:
-                user_text = self._io.get_user_input()
-                if user_text is None:  # EOF
-                    break
-                user_text = user_text.strip()
-                if not user_text:
-                    continue
-                if _is_exit(user_text):
+                user_input = self._io.get_user_input()
+                if user_input is None:  # EOF
                     break
 
-                reply = self._brain.reply(user_text)
+                if isinstance(user_input, str):
+                    text = user_input.strip()
+                    if not text:
+                        continue
+                    if _is_exit(text):
+                        break
+                    reply = self._brain.reply(text)
+                else:
+                    # Audio turn: sent straight to the brain (Gemini understands it).
+                    reply = self._brain.reply(user_input)
+
                 self._face.set_expression(reply.expression)
                 self._io.speak(reply.text)
         except KeyboardInterrupt:
