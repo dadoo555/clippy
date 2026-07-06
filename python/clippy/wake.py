@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import sounddevice as sd
+
+from .settings import PYTHON_ROOT
 
 _SAMPLE_RATE = 16000
 _FRAME = int(_SAMPLE_RATE * 0.2)  # 200 ms reads
@@ -41,12 +44,14 @@ class WakeWord:
         self._device = cfg.get("live", {}).get("input_device")
         self._phrases = [p.lower() for p in wake_cfg.get("phrases", ["clip", "clipe", "clipi", "clippy", "clique"])]
 
-        model_path = wake_cfg.get("model_path", "")
-        if not model_path or not os.path.isdir(model_path):
+        raw = wake_cfg.get("model_path", "")
+        model_path = self._find_folder(raw)
+        if model_path is None:
+            tried = ", ".join(str(c) for c in self._candidates(raw)) or "(vazio)"
             raise RuntimeError(
-                f"wake.model_path ('{model_path}') não é uma pasta. Baixe um modelo pequeno em "
-                "https://alphacephei.com/vosk/models (ex.: vosk-model-small-pt-0.3), descompacte, "
-                "e coloque o caminho da PASTA em `wake.model_path` no config.yaml."
+                f"wake.model_path ('{raw}') não foi achado como pasta. Procurei em: {tried}. "
+                "Baixe um modelo em https://alphacephei.com/vosk/models, descompacte, e ponha o "
+                "caminho da PASTA em `wake.model_path`."
             )
 
         resolved = _resolve_model_dir(model_path)
@@ -66,6 +71,22 @@ class WakeWord:
         vosk.SetLogLevel(-1)  # silence Kaldi logs
         self._vosk = vosk
         self._model = vosk.Model(resolved)
+
+    @staticmethod
+    def _candidates(raw: str) -> list[Path]:
+        """Where to look for a relative model path: cwd, python/, and the repo root."""
+        if not raw:
+            return []
+        p = Path(raw)
+        if p.is_absolute():
+            return [p]
+        return [Path.cwd() / p, PYTHON_ROOT / p, PYTHON_ROOT.parent / p]
+
+    def _find_folder(self, raw: str) -> str | None:
+        for c in self._candidates(raw):
+            if c.is_dir():
+                return str(c)
+        return None
 
     def _matches(self, text: str) -> bool:
         text = text.lower()

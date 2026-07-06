@@ -23,8 +23,13 @@ live:
   output_device: null              # sounddevice output index/name (null = system default)
 wake:
   enabled: true                    # wake word ON: sleeps until it hears "clippy" (no API cost idle)
-  # Vosk model folder. Download a small model from https://alphacephei.com/vosk/models
-  # (ex.: vosk-model-small-pt-0.3), unzip, and put the FOLDER path here. Empty = wake word off
-  # (goes straight into one live session).
+  # Pasta do modelo Vosk (wake word offline). Caminho relativo é procurado em 3 lugares: de onde
+  # você roda, em python/, e na RAIZ do repo (~/clippy). Então o padrão abaixo acha o modelo esteja
+  # ele na raiz do repo ou em python/. Vazio = wake word desligado (entra direto numa sessão).
+  # Exemplos:
+  #   Ubuntu/Debian (padrão): ./vosk-model-small-en-us-0.15   (acha em ~/clippy/ ou ~/clippy/python/)
+  #   Windows:                .\vosk-model-small-en-us-0.15
+  #   absoluto, se preferir:  /home/arduino/clippy/vosk-model-small-en-us-0.15
+  # Outros modelos: https://alphacephei.com/vosk/models
   model_path: "./vosk-model-small-en-us-0.15"
   phrases: [clip, clipe, clipi, clippy, clique]

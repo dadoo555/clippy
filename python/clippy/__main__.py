@@ -49,16 +49,32 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     return 0
 
 
+def _portaudio_hint(exc: Exception) -> str:
+    return (
+        f"Erro de áudio: {exc}\n"
+        "Falta a biblioteca PortAudio (o sounddevice depende dela). Na placa (Debian):\n"
+        "  sudo apt update && sudo apt install -y libportaudio2"
+    )
+
+
 def _cmd_live(args: argparse.Namespace) -> int:
     # Imported lazily so `chat` never loads the audio stack.
-    from .live import run_live
+    try:
+        from .live import run_live
+    except OSError as exc:
+        print(_portaudio_hint(exc), file=sys.stderr)
+        return 1
 
     return run_live(load_config(args.config))
 
 
 def _cmd_devices(args: argparse.Namespace) -> int:
     """List audio devices so you can pick a mic/speaker."""
-    import sounddevice as sd
+    try:
+        import sounddevice as sd
+    except OSError as exc:
+        print(_portaudio_hint(exc), file=sys.stderr)
+        return 1
 
     print(sd.query_devices())
     return 0
