@@ -8,3 +8,6 @@ sounddevice>=0.4,<1
 # Offline wake-word listening ("clippy") so the API is only used while awake. Needs a Vosk model
 # folder (see wake.model_path in config.yaml).
 vosk>=0.3.44
+# Arduino Router Bridge client — provides `arduino.app_utils` (Bridge) to drive the MAX7219 matrix
+# via the MCU on the UNO Q. Board (Linux) only; pulls its own deps (msgpack, cryptography, watchdog).
+arduino-app-bricks==0.11.0rc3 ; sys_platform == "linux"
