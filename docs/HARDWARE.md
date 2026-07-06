@@ -1,110 +1,110 @@
-# Hardware do rosto — MAX7219 8×8 no Arduino UNO Q
+# Face hardware — MAX7219 8×8 on Arduino UNO Q
 
-Guia de fiação e firmware do rosto do Clippy: um painel **ELEGOO MAX7219 Dot Matrix Module V02**
-(LED 8×8) dirigido pelo **MCU (STM32U585)** via SPI. O Python (MPU) escolhe a expressão e manda o
-**nome** pela **Arduino Router Bridge**; o sketch guarda os bitmaps e desenha na matriz.
+Wiring and firmware guide for Clippy's face: an **ELEGOO MAX7219 Dot Matrix Module V02**
+(8×8 LED panel) driven by the **MCU (STM32U585)** over SPI. Python (MPU) picks the expression and sends the
+**name** over the **Arduino Router Bridge**; the sketch stores the bitmaps and draws on the matrix.
 
 ---
 
-## ⚡ Precisa de código Arduino?
+## ⚡ Do you need Arduino code?
 
-**Sim.** A matriz é controlada pelo MCU — o Python sozinho não fala com ela. Você grava **uma
-vez** o sketch [`arduino/clippy_face/clippy_face.ino`](../arduino/clippy_face/clippy_face.ino) no
-MCU (pelo Arduino IDE) e, dali em diante, o lado Python só chama:
+**Yes.** The matrix is controlled by the MCU — Python alone cannot talk to it. You flash **once**
+the sketch [`arduino/clippy_face/clippy_face.ino`](../arduino/clippy_face/clippy_face.ino) on the
+MCU (via Arduino IDE), and from then on the Python side only calls:
 
 ```python
-Bridge.call("set_face", "feliz")   # qualquer valor de clippy/expressions.py
-Bridge.call("clippy_ping")         # -> 1 se o sketch está carregado
+Bridge.call("set_face", "feliz")   # any value from clippy/expressions.py
+Bridge.call("clippy_ping")         # -> 1 if the sketch is loaded
 ```
 
 ---
 
-## 🔌 Fiação (1 módulo, o recomendado)
+## 🔌 Wiring (1 module, recommended)
 
-O Uno Q trabalha em **3.3V** (os pinos são 5V-tolerantes na entrada, mas a saída HIGH é 3.3V).
-Para o MAX7219 reconhecer o nível lógico **dentro da especificação sem level shifter**, alimente
-o módulo pelo pino **3V3** (não pelo 5V). Com um único módulo mostrando um rostinho, o consumo é
-baixo e o 3V3 dá conta.
+The Uno Q runs at **3.3V** (pins are 5V-tolerant on input, but HIGH output is 3.3V).
+For the MAX7219 to recognize the logic level **within spec without a level shifter**, power
+the module from the **3V3** pin (not 5V). With a single module showing a small face, current draw is
+low and 3V3 is enough.
 
-Conecte no **lado de ENTRADA** do módulo (o que tem **DIN**; o lado **DOUT** é só para encadear
-mais módulos e fica livre aqui):
+Connect to the module **INPUT** side (the one with **DIN**; the **DOUT** side is only for chaining
+more modules and stays unconnected here):
 
-| MAX7219 (lado entrada) | Pino do UNO Q | Função |
+| MAX7219 (input side) | UNO Q pin | Function |
 | --- | --- | --- |
-| **VCC** | **3V3** | Alimentação 3.3V (mantém a lógica na spec) |
-| **GND** | **GND** | Terra comum |
-| **DIN** | **D11** | Dados (MOSI) |
-| **CS**  | **D10** | Latch/carga (SS) |
+| **VCC** | **3V3** | 3.3V power (keeps logic within spec) |
+| **GND** | **GND** | Common ground |
+| **DIN** | **D11** | Data (MOSI) |
+| **CS**  | **D10** | Latch/load (SS) |
 | **CLK** | **D13** | Clock (SCK) |
 
-> Dica: se a carinha aparecer **de cabeça para baixo ou espelhada**, não mexa na fiação — ajuste
-> `FLIP_ROWS` / `MIRROR_COLS` no topo do `.ino` e regrave.
+> Tip: if the face appears **upside down or mirrored**, do not change the wiring — adjust
+> `FLIP_ROWS` / `MIRROR_COLS` at the top of the `.ino` and reflash.
 
-### Quer brilho máximo? (opcional)
+### Want maximum brightness? (optional)
 
-Se achar a matriz fraca, ou se um dia encadear vários módulos, aí sim alimente **VCC → 5V** e
-coloque um **level shifter 3.3V→5V** nas linhas **DIN, CS, CLK** (ex.: shield de level shift para
-Uno Q). Não ligue o 5V direto na matriz esperando lógica confiável a 3.3V — o limiar HIGH do
-MAX7219 a 5V é ~3.5V, acima do que o Uno Q entrega.
+If the matrix looks dim, or if you chain several modules later, power **VCC → 5V** and
+add a **3.3V→5V level shifter** on **DIN, CS, CLK** (e.g. a level-shift shield for
+Uno Q). Do not connect 5V directly to the matrix expecting reliable logic at 3.3V — the MAX7219
+HIGH threshold at 5V is ~3.5V, above what the Uno Q outputs.
 
 ---
 
-## 🧰 Gravar o firmware (uma vez)
+## 🧰 Flash the firmware (one time)
 
-1. No PC, abra o **Arduino IDE** e selecione a placa **Arduino UNO Q** (MCU).
-2. Instale as bibliotecas pelo **Library Manager**:
-   - **LedControl** (by Eberhard Fahle) — driver do MAX7219.
-   - **Arduino_RouterBridge** — RPC MessagePack MPU⇄MCU.
-3. Abra `arduino/clippy_face/clippy_face.ino` e faça o **upload** para o MCU.
-4. No Linux da placa, garanta o router ativo:
+1. On your PC, open **Arduino IDE** and select the **Arduino UNO Q** (MCU) board.
+2. Install libraries via **Library Manager**:
+   - **LedControl** (by Eberhard Fahle) — MAX7219 driver.
+   - **Arduino_RouterBridge** — MessagePack RPC MPU⇄MCU.
+3. Open `arduino/clippy_face/clippy_face.ino` and **upload** to the MCU.
+4. On the board's Linux, make sure the router is running:
    ```bash
    sudo systemctl start arduino-router
    sudo systemctl enable arduino-router
    ```
-5. Teste da placa (Python):
+5. Test from the board (Python):
    ```python
    from arduino.app_utils import Bridge
-   Bridge.call("set_face", "feliz")     # a carinha deve mudar
+   Bridge.call("set_face", "feliz")     # the face should change
    print(Bridge.call("clippy_ping"))    # -> 1
    ```
 
 ---
 
-## 🐍 Ligando no lado Python
+## 🐍 Wiring up the Python side
 
-O catálogo de expressões é [`python/clippy/expressions.py`](../python/clippy/expressions.py) — os
-nomes ali (`feliz`, `triste`, `pensativo`, …) são **os mesmos** da tabela `FACES[]` no `.ino`.
-Quando for plugar a matriz de verdade (fase do rosto), o [`python/clippy/face.py`](../python/clippy/face.py)
-já traz a implementação `MatrixFaceDisplay`, que só chama a Bridge:
+The expression catalog is [`python/clippy/expressions.py`](../python/clippy/expressions.py) — the
+names there (`feliz`, `triste`, `pensativo`, …) are **the same** as in the `FACES[]` table in the `.ino`.
+When you hook up the real matrix (face phase), [`python/clippy/face.py`](../python/clippy/face.py)
+already provides `MatrixFaceDisplay`, which only calls the Bridge:
 
 ```python
 class MatrixFaceDisplay:
     def __init__(self):
-        from arduino.app_utils import Bridge   # existe só no runtime do App Lab na placa
+        from arduino.app_utils import Bridge   # only exists in App Lab runtime on the board
         self._Bridge = Bridge
     def set_expression(self, expression):
         self._Bridge.call("set_face", expression.value)
 ```
 
-O modo `live` (`clippy/live.py`) já usa `build_face("auto")`: se a Bridge responder, dirige a
-matriz **e** imprime no terminal; senão, cai só pro terminal com um aviso.
+`live` mode (`clippy/live.py`) already uses `build_face("auto")`: if the Bridge responds, it drives the
+matrix **and** prints to the terminal; otherwise it falls back to terminal only with a warning.
 
-### Fazendo a venv enxergar a Bridge (`arduino.app_utils`)
+### Making the venv see the Bridge (`arduino.app_utils`)
 
-O módulo `arduino.app_utils` vem do **App Lab da placa** (pacote `arduino_app_bricks`) e **não está
-no PyPI** — o `pip install` não acha. Se você roda o Clippy numa venv própria, aponte-a para o
-`site-packages` de um projeto App Lab que já tenha o pacote (ex.: um projeto irmão), com um `.pth`:
+The `arduino.app_utils` module comes from the **board's App Lab** (`arduino_app_bricks` package) and is **not on
+PyPI** — `pip install` cannot find it. If you run Clippy in your own venv, point it at the
+`site-packages` of an App Lab project that already has the package (e.g. a sibling project), with a `.pth`:
 
 ```bash
 echo /home/arduino/OUTRO-PROJETO/python/.venv/lib/python3.13/site-packages > \
   ~/clippy/python/.venv/lib/python3.13/site-packages/_arduino_bridge.pth
-# teste:
+# test:
 python -c "from arduino.app_utils import Bridge; print(Bridge.call('clippy_ping', timeout=3))"  # -> 1
 ```
 
-Os pacotes próprios do Clippy têm prioridade, então o `.pth` só preenche o que falta (`arduino` e
-suas deps). Alternativa: `pip install arduino-app-bricks` **se** você tiver o índice do App Lab
-configurado; ou criar a venv dentro do fluxo do App Lab.
+Clippy's own packages take priority, so the `.pth` only fills in what is missing (`arduino` and
+its deps). Alternative: `pip install arduino-app-bricks` **if** you have the App Lab index
+configured; or create the venv inside the App Lab workflow.
 
-> ⚠️ Ao adicionar/renomear uma expressão em `expressions.py`, adicione o bitmap correspondente em
-> `FACES[]` no `.ino` com **o mesmo nome**. Nomes desconhecidos caem no rosto `neutro`.
+> ⚠️ When adding/renaming an expression in `expressions.py`, add the matching bitmap in
+> `FACES[]` in the `.ino` with **the same name**. Unknown names fall back to the `neutro` face.

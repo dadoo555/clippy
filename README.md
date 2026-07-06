@@ -1,47 +1,47 @@
-# Clippy — Assistente de Voz para o Arduino UNO Q
+# Clippy — Voice Assistant for the Arduino UNO Q
 
-O **Clippy** é um assistente animado e bem-humorado que roda **inteiramente no Arduino UNO Q**.
-A meta final: ele ouve a palavra **"clippy"**, você fala, a fala vai pro **Gemini**, e ele
-responde **por voz** — com um **rosto de LED** (matriz MAX7219 8×8) que reage ao que está sendo
-dito. A expressão da carinha é escolhida pelo **próprio Gemini** a cada resposta.
+**Clippy** is a fun, animated assistant that runs **entirely on the Arduino UNO Q**.
+The end goal: it listens for the word **"clippy"**, you speak, your speech goes to **Gemini**, and it
+responds **by voice** — with an **LED face** (MAX7219 8×8 matrix) that reacts to what is being
+said. The face expression is chosen by **Gemini itself** on every response.
 
-Hoje o Clippy já **conversa por voz em tempo real** (Gemini Live API): dorme ouvindo a palavra
-**"clippy"**, acorda, conversa por áudio (com busca na internet e carinha escolhida pelo Gemini) e
-**volta a dormir após 10 s** de silêncio. Falta a matriz de LED física (o sketch já existe) e o
-botão do MCU.
+Today Clippy already **holds real-time voice conversations** (Gemini Live API): it sleeps while listening for
+**"clippy"**, wakes up, converses over audio (with web search and a face chosen by Gemini), and
+**goes back to sleep after 10 s** of silence. Still missing: the physical LED matrix (the sketch already exists) and the
+MCU button.
 
 ---
 
-## 🔑 Obter e configurar a chave do Gemini
+## 🔑 Get and configure your Gemini API key
 
-1. Acesse o **Google AI Studio** (https://aistudio.google.com/apikey) e crie uma **API key**
-   gratuita (começa com `AIza...`).
-2. Forneça a chave ao app. Ela nunca fica no código; o app lê de `GEMINI_API_KEY`. Ordem de
-   prioridade: **variável de ambiente real → arquivo `.env`**.
+1. Go to **Google AI Studio** (https://aistudio.google.com/apikey) and create a free **API key**
+   (starts with `AIza...`).
+2. Provide the key to the app. It never lives in code; the app reads it from `GEMINI_API_KEY`. Priority
+   order: **real environment variable → `.env` file**.
 
-**Jeito recomendado (dev e prod) — arquivo `.env`:** copie `python/.env.example` para
-`python/.env` e preencha. O `.env` é gitignored e é lido automaticamente no arranque, então você
-não precisa mexer com `$env:`/`export` toda vez.
+**Recommended approach (dev and prod) — `.env` file:** copy `python/.env.example` to
+`python/.env` and fill it in. `.env` is gitignored and loaded automatically at startup, so you
+do not need to set `$env:`/`export` every time.
 
 ```bash
 cd python
 cp .env.example .env        # Windows PowerShell: copy .env.example .env
-# edite .env e coloque: GEMINI_API_KEY=AIza...
+# edit .env and set: GEMINI_API_KEY=AIza...
 ```
 
-**Alternativa (variável de ambiente):** útil quando a chave vem do sistema/CI. Como ela tem
-prioridade sobre o `.env`, serve para sobrescrever em produção.
-- **PowerShell (Windows):** `$env:GEMINI_API_KEY = "sua-chave"` (vale só na janela atual)
-- **bash (Debian do UNO Q / Linux):** `export GEMINI_API_KEY="sua-chave"`
+**Alternative (environment variable):** useful when the key comes from the system/CI. Because it takes
+priority over `.env`, it can override in production.
+- **PowerShell (Windows):** `$env:GEMINI_API_KEY = "your-key"` (only for the current window)
+- **bash (UNO Q Debian / Linux):** `export GEMINI_API_KEY="your-key"`
 
-**Em produção na placa (systemd):** aponte o serviço para o mesmo `.env`:
-`EnvironmentFile=/caminho/para/clippy/python/.env`.
+**On the board in production (systemd):** point the service at the same `.env`:
+`EnvironmentFile=/path/to/clippy/python/.env`.
 
 ---
 
-## 📦 Instalar
+## 📦 Install
 
-No Debian do MPU (ou no PC para desenvolvimento):
+On the MPU Debian (or on your PC for development):
 
 ```bash
 cd python
@@ -52,97 +52,97 @@ pip install -r requirements.txt
 
 ---
 
-## 🎤 Rodar por voz (Gemini Live API)
+## 🎤 Run by voice (Gemini Live API)
 
-O jeito principal: **conversa em tempo real**, áudio entra e áudio sai. Você fala, o Clippy
-**responde falando** com a voz nativa do Gemini, com interrupções e busca na internet.
+The main path: **real-time conversation**, audio in and audio out. You speak, Clippy
+**responds by talking** with Gemini's native voice, with interruptions and web search.
 
 ```bash
-python -m clippy devices   # lista mic/alto-falante (para escolher no config, se precisar)
-python -m clippy live      # conversa por voz em tempo real (precisa da GEMINI_API_KEY)
+python -m clippy devices   # list mic/speaker (to pick in config if needed)
+python -m clippy live      # real-time voice conversation (requires GEMINI_API_KEY)
 ```
 
-Como funciona:
-- **Dorme ouvindo "clippy"** (Vosk, local, offline — não gasta API). Ao ouvir, acorda e conecta.
-- **Áudio↔áudio streaming** via `client.aio.live.connect()` (mic a 16 kHz → Gemini → voz a 24 kHz).
-- **Volta a dormir após 10 s de silêncio** (`live.inactivity_timeout_s`).
-- **Busca na internet** (`gemini.web_search`) — clima/notícias/fatos reais, não inventados.
-- **Carinha decidida pelo Gemini** pela função `set_face`; hoje imprime no terminal, e vira o
-  MAX7219 pela Bridge na fase do rosto.
-- `Ctrl-C` sai. Sem wake word configurada, roda uma sessão direta e encerra no timeout.
+How it works:
+- **Sleeps listening for "clippy"** (Vosk, local, offline — no API cost). When heard, it wakes and connects.
+- **Audio↔audio streaming** via `client.aio.live.connect()` (mic at 16 kHz → Gemini → voice at 24 kHz).
+- **Goes back to sleep after 10 s of silence** (`live.inactivity_timeout_s`).
+- **Web search** (`gemini.web_search`) — weather/news/real facts, not made up.
+- **Face chosen by Gemini** via the `set_face` function; today it prints to the terminal, and will drive the
+  MAX7219 over the Bridge in the face phase.
+- `Ctrl-C` exits. With no wake word configured, it runs one direct session and ends on timeout.
 
 ### Wake word "clippy" (Vosk)
 
-Precisa de um modelo Vosk pequeno (offline, uma vez):
-1. Baixe um modelo pequeno em https://alphacephei.com/vosk/models — ex.: **`vosk-model-small-pt-0.3`**
-   (PT, ~50 MB). Descompacte.
-2. Aponte a **pasta** em `config.yaml` → `wake.model_path: "C:/.../vosk-model-small-pt-0.3"`.
-3. Rode `python -m clippy live`. Se `wake.model_path` ficar vazio, o wake word fica desligado e ele
-   entra direto numa sessão.
+You need a small Vosk model (offline, one-time setup):
+1. Download a small model from https://alphacephei.com/vosk/models — e.g. **`vosk-model-small-pt-0.3`**
+   (PT, ~50 MB). Unzip it.
+2. Point to the **folder** in `config.yaml` → `wake.model_path: "C:/.../vosk-model-small-pt-0.3"`.
+3. Run `python -m clippy live`. If `wake.model_path` is empty, the wake word is off and it
+   goes straight into a session.
 
-O Vosk transcreve por cima e casa qualquer palavra da lista `wake.phrases` (padrão: `clip, clipe,
-clipi, clippy, clique`) — ajuste se ele acordar de menos/demais.
+Vosk transcribes on top and matches any word from the `wake.phrases` list (default: `clip, clipe,
+clipi, clippy, clique`) — adjust if it wakes too little or too often.
 
-### Onde ficam as instruções do modelo (persona)
+### Where model instructions live (persona)
 
-Em `config.yaml` → `gemini.persona`. Esse texto é o **system prompt** e vale para os dois modos
-(`live` e `chat`). É lá que você define personalidade, idioma e estilo.
+In `config.yaml` → `gemini.persona`. That text is the **system prompt** and applies to both modes
+(`live` and `chat`). That is where you define personality, language, and style.
 
-Outros ajustes (`config.yaml`): `live.model`/`voice`/`inactivity_timeout_s`, `gemini.web_search`,
-`live.input_device`/`output_device`. Se `live.model` der erro para sua chave, troque-o (o comentário
-no config lista alternativas).
+Other settings (`config.yaml`): `live.model`/`voice`/`inactivity_timeout_s`, `gemini.web_search`,
+`live.input_device`/`output_device`. If `live.model` errors for your key, change it (the comment
+in config lists alternatives).
 
-> ⚠️ **Apagou o `local_config.yaml`?** Ótimo — ele se recria a partir de `config.yaml` no próximo
-> run, já com as seções `live` e `wake`.
+> ⚠️ **Deleted `local_config.yaml`?** Good — it is recreated from `config.yaml` on the next
+> run, already with the `live` and `wake` sections.
 
-## 💬 Rodar por texto (opcional, para testar)
+## 💬 Run by text (optional, for testing)
 
 ```bash
-python -m clippy chat            # conversa por texto com o Gemini (precisa da chave)
-python -m clippy chat --dry-run  # offline: ecoa a entrada, sem chave nem internet
+python -m clippy chat            # text chat with Gemini (requires the key)
+python -m clippy chat --dry-run  # offline: echoes input, no key or internet
 ```
 
-Útil para validar chave/persona sem áudio. Digite `sair` (ou `Ctrl-D`) para encerrar.
+Useful to validate key/persona without audio. Type `sair` (or `Ctrl-D`) to exit.
 
-**Dependência extra na placa (Debian):** o `sounddevice` precisa do PortAudio
+**Extra dependency on the board (Debian):** `sounddevice` needs PortAudio
 (`sudo apt install libportaudio2`).
 
 ---
 
-## 🙂 O rosto (hardware)
+## 🙂 The face (hardware)
 
-O rosto é um **ELEGOO MAX7219 Dot Matrix Module V02** (painel de LED **8×8**), dirigido pelo
-**MCU (STM32U585)** via **SPI** — pinos `VCC`, `GND`, `DIN`, `CS`, `CLK` (o `DOUT` é só para
-encadear vários módulos; com um só, fica livre). O catálogo de expressões vive em
-[`python/clippy/expressions.py`](python/clippy/expressions.py) e é a **fonte única** dos nomes: a
-tabela de bitmaps 8×8 do sketch do MCU vai usar exatamente esses nomes.
+The face is an **ELEGOO MAX7219 Dot Matrix Module V02** (**8×8** LED panel), driven by the
+**MCU (STM32U585)** over **SPI** — pins `VCC`, `GND`, `DIN`, `CS`, `CLK` (`DOUT` is only for
+chaining multiple modules; with a single one, leave it unconnected). The expression catalog lives in
+[`python/clippy/expressions.py`](python/clippy/expressions.py) and is the **single source** of names: the
+MCU sketch's 8×8 bitmap table uses exactly those names.
 
-**Fiação, firmware e voltagem:** veja [`docs/HARDWARE.md`](docs/HARDWARE.md). O sketch do MCU já
-está em [`arduino/clippy_face/clippy_face.ino`](arduino/clippy_face/clippy_face.ino).
+**Wiring, firmware, and voltage:** see [`docs/HARDWARE.md`](docs/HARDWARE.md). The MCU sketch is already at
+[`arduino/clippy_face/clippy_face.ino`](arduino/clippy_face/clippy_face.ino).
 
-Microfone e alto-falante são **USB**, enxergados pelo **Debian do MPU** — a pipeline de áudio
-roda toda no MPU.
+Microphone and speaker are **USB**, seen by **MPU Debian** — the audio pipeline
+runs entirely on the MPU.
 
 ---
 
-## 🧩 Organização do código (pontos de extensão)
+## 🧩 Code layout (extension points)
 
-| Arquivo | Papel |
+| File | Role |
 |---|---|
-| `clippy/live.py` | **Modo principal:** voz em tempo real + máquina de estados (dorme/acorda/timeout) |
-| `clippy/wake.py` | Wake word "clippy" offline (Vosk) |
-| `clippy/brain.py` | Modo texto: Gemini + busca + carinha por tag `[[face:...]]` |
-| `clippy/face.py` | Mostra a expressão (terminal agora → `MatrixFaceDisplay` no MAX7219) |
-| `clippy/expressions.py` | Catálogo fixo de carinhas (espelhado nos bitmaps do MCU) |
-| `clippy/session.py`, `io_channel.py` | Loop e I/O do modo texto |
+| `clippy/live.py` | **Main mode:** real-time voice + state machine (sleep/wake/timeout) |
+| `clippy/wake.py` | Offline "clippy" wake word (Vosk) |
+| `clippy/brain.py` | Text mode: Gemini + search + face via `[[face:...]]` tag |
+| `clippy/face.py` | Shows the expression (terminal now → `MatrixFaceDisplay` on MAX7219) |
+| `clippy/expressions.py` | Fixed face catalog (mirrored in MCU bitmaps) |
+| `clippy/session.py`, `io_channel.py` | Text mode loop and I/O |
 
 ---
 
 ## 🗺️ Roadmap
 
-1. **Base:** conversa por texto com o Gemini + escolha de expressão. ✅
-2. **Voz em tempo real:** Gemini Live API (áudio↔áudio, busca, carinha via `set_face`). ✅
-3. **Wake word + estados:** palavra "clippy" (Vosk), dorme/acorda, timeout de 10 s. ✅
-   Falta o **botão físico** do MCU (liga/desliga).
-4. **Rosto:** sketch do MCU dirigindo o MAX7219 8×8 via Arduino Router Bridge (`MatrixFaceDisplay`).
-5. **Polimento:** LEDs/matriz da placa, latência, ajuste da persona/voz.
+1. **Base:** text chat with Gemini + expression choice. ✅
+2. **Real-time voice:** Gemini Live API (audio↔audio, search, face via `set_face`). ✅
+3. **Wake word + states:** word "clippy" (Vosk), sleep/wake, 10 s timeout. ✅
+   Still missing: physical **MCU button** (on/off).
+4. **Face:** MCU sketch driving MAX7219 8×8 via Arduino Router Bridge (`MatrixFaceDisplay`).
+5. **Polish:** board LEDs/matrix, latency, persona/voice tuning.
