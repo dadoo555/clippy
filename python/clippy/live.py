@@ -43,6 +43,13 @@ _EXPR_ALIASES = {
     "confused": Expression.confuso,
     "wink": Expression.piscada, "winking": Expression.piscada,
     "love": Expression.amoroso, "loving": Expression.amoroso, "in_love": Expression.amoroso,
+    "laughing": Expression.rindo, "laugh": Expression.rindo, "haha": Expression.rindo, "lol": Expression.rindo,
+    "angry": Expression.bravo, "mad": Expression.bravo, "annoyed": Expression.bravo,
+    "crying": Expression.chorando, "cry": Expression.chorando, "sobbing": Expression.chorando,
+    "playful": Expression.careta, "tongue": Expression.careta, "tongue_out": Expression.careta, "silly": Expression.careta,
+    "bored": Expression.entediado, "boring": Expression.entediado, "unimpressed": Expression.entediado,
+    "scared": Expression.assustado, "afraid": Expression.assustado, "fear": Expression.assustado, "shocked": Expression.assustado,
+    "cool": Expression.legal, "sunglasses": Expression.legal, "awesome": Expression.legal, "chill": Expression.legal,
     "sleeping": Expression.dormindo, "asleep": Expression.dormindo, "sleepy": Expression.dormindo,
 }
 
