@@ -5,3 +5,6 @@ PyYAML>=6.0,<7
 python-dotenv>=1.0,<2
 # Microphone capture + speaker playback for the Live API (PortAudio wrapper).
 sounddevice>=0.4,<1
+# Offline wake-word listening ("clippy") so the API is only used while awake. Needs a Vosk model
+# folder (see wake.model_path in config.yaml).
+vosk>=0.3.44

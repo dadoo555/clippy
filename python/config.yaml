@@ -6,11 +6,9 @@ gemini:
   # System prompt (persona). Kept in config so it can be tuned without touching code.
   persona: |
     Você é o Clippy, um assistente animado, prestativo e bem-humorado. Responde em
-    português do Brasil, de forma curta e natural, porque suas respostas são faladas
+    português do Brasil ou em alemão da Alemanha, de forma curta e natural, porque suas respostas são faladas
     em voz alta. Evite listas e formatação; fale como numa conversa. A cada resposta,
     escolha também a expressão de rosto que combina com o que você está dizendo.
-conversation:
-  suspend_timeout_seconds: 30      # reserved for Phase 3 (kept here so config is stable across phases)
 live:
   # Gemini Live API (real-time audio in/out). If the model errors for your key, try
   # gemini-2.5-flash-preview-native-audio-dialog or gemini-live-2.5-flash-preview.
@@ -18,3 +16,15 @@ live:
   api_version: v1beta
   voice: Leda                      # native voice timbre (Leda, Puck, Kore, Charon, Aoede, ...)
   face_tool: true                  # let Gemini pick the face via a set_face function call
+  inactivity_timeout_s: 15         # after this much silence, go back to sleep (wait for "clippy")
+  speech_level: 300                # mic amplitude that counts as "you're talking" (keeps it awake)
+  half_duplex: true                # mute mic while Gemini talks (kills echo cutting it off; no barge-in)
+  input_device: null               # sounddevice input index/name (null = system default)
+  output_device: null              # sounddevice output index/name (null = system default)
+wake:
+  enabled: true                    # wake word ON: sleeps until it hears "clippy" (no API cost idle)
+  # Vosk model folder. Download a small model from https://alphacephei.com/vosk/models
+  # (ex.: vosk-model-small-pt-0.3), unzip, and put the FOLDER path here. Empty = wake word off
+  # (goes straight into one live session).
+  model_path: ""
+  phrases: [clip, clipe, clipi, clippy, clique]

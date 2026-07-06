@@ -1,8 +1,13 @@
 # Plano — Modo tempo-real (Gemini Live API) e comparação de áudio
 
-Documento de planejamento. Compara as três formas de tratar áudio no Clippy e descreve **como**
-implementar o modo B (Live API, áudio↔áudio streaming) **se/quando** valer a pena. Hoje o projeto
-usa o modo **A** (áudio gravado → Gemini → `{texto, expressão, heard}` → TTS local).
+> **Status (atual):** o modo **B (Live API)** foi **implementado** e é o padrão
+> (`python -m clippy live`, em `clippy/live.py`), com wake word "clippy" e timeout de 10 s. Os
+> modos A/C (Whisper/edge-tts/áudio→Gemini) foram **removidos**. Este documento fica como
+> referência histórica de decisão — em especial a **comparação de custos** abaixo continua útil,
+> lembrando que B é o mais caro (áudio de ida e volta).
+
+Documento de planejamento original. Comparava as três formas de tratar áudio no Clippy e descrevia
+como implementar o modo B (Live API, áudio↔áudio streaming).
 
 ---
 

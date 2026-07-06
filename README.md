@@ -5,9 +5,10 @@ A meta final: ele ouve a palavra **"clippy"**, você fala, a fala vai pro **Gemi
 responde **por voz** — com um **rosto de LED** (matriz MAX7219 8×8) que reage ao que está sendo
 dito. A expressão da carinha é escolhida pelo **próprio Gemini** a cada resposta.
 
-Este repositório está na **Fase 1**: a fundação. Um loop de **conversa por texto** com o Gemini
-que já devolve, a cada turno, **`{texto, expressão}`**. Voz (Whisper + Piper), a matriz de LED no
-MCU e a máquina de estados entram nas próximas fases **sem reescrever** o núcleo.
+Hoje o Clippy já **conversa por voz em tempo real** (Gemini Live API): dorme ouvindo a palavra
+**"clippy"**, acorda, conversa por áudio (com busca na internet e carinha escolhida pelo Gemini) e
+**volta a dormir após 10 s** de silêncio. Falta a matriz de LED física (o sketch já existe) e o
+botão do MCU.
 
 ---
 
@@ -61,19 +62,38 @@ python -m clippy devices   # lista mic/alto-falante (para escolher no config, se
 python -m clippy live      # conversa por voz em tempo real (precisa da GEMINI_API_KEY)
 ```
 
-Fale à vontade; aperte `Ctrl-C` para sair. Como funciona:
+Como funciona:
+- **Dorme ouvindo "clippy"** (Vosk, local, offline — não gasta API). Ao ouvir, acorda e conecta.
 - **Áudio↔áudio streaming** via `client.aio.live.connect()` (mic a 16 kHz → Gemini → voz a 24 kHz).
+- **Volta a dormir após 10 s de silêncio** (`live.inactivity_timeout_s`).
 - **Busca na internet** (`gemini.web_search`) — clima/notícias/fatos reais, não inventados.
-- **Carinha decidida pelo Gemini** por uma função `set_face` (o modelo a chama quando muda de
-  humor); hoje imprime no terminal, e vira o MAX7219 pela Bridge na fase do rosto.
-- **Memória** durante a sessão (janela deslizante nativa); zera ao reiniciar.
+- **Carinha decidida pelo Gemini** pela função `set_face`; hoje imprime no terminal, e vira o
+  MAX7219 pela Bridge na fase do rosto.
+- `Ctrl-C` sai. Sem wake word configurada, roda uma sessão direta e encerra no timeout.
 
-Ajustes em `config.yaml` (seção `live`): `model`, `voice` (timbre: Leda, Puck, Kore...),
-`api_version`, `face_tool`. Se o modelo do padrão der erro para sua chave, troque `live.model`
-(o comentário no config lista alternativas).
+### Wake word "clippy" (Vosk)
 
-> ⚠️ Já tem um `python/local_config.yaml` antigo? Ele **não** traz a seção `live`. Apague-o (ele
-> se recria a partir de `config.yaml`) para pegar as opções novas.
+Precisa de um modelo Vosk pequeno (offline, uma vez):
+1. Baixe um modelo pequeno em https://alphacephei.com/vosk/models — ex.: **`vosk-model-small-pt-0.3`**
+   (PT, ~50 MB). Descompacte.
+2. Aponte a **pasta** em `config.yaml` → `wake.model_path: "C:/.../vosk-model-small-pt-0.3"`.
+3. Rode `python -m clippy live`. Se `wake.model_path` ficar vazio, o wake word fica desligado e ele
+   entra direto numa sessão.
+
+O Vosk transcreve por cima e casa qualquer palavra da lista `wake.phrases` (padrão: `clip, clipe,
+clipi, clippy, clique`) — ajuste se ele acordar de menos/demais.
+
+### Onde ficam as instruções do modelo (persona)
+
+Em `config.yaml` → `gemini.persona`. Esse texto é o **system prompt** e vale para os dois modos
+(`live` e `chat`). É lá que você define personalidade, idioma e estilo.
+
+Outros ajustes (`config.yaml`): `live.model`/`voice`/`inactivity_timeout_s`, `gemini.web_search`,
+`live.input_device`/`output_device`. Se `live.model` der erro para sua chave, troque-o (o comentário
+no config lista alternativas).
+
+> ⚠️ **Apagou o `local_config.yaml`?** Ótimo — ele se recria a partir de `config.yaml` no próximo
+> run, já com as seções `live` e `wake`.
 
 ## 💬 Rodar por texto (opcional, para testar)
 
@@ -84,21 +104,8 @@ python -m clippy chat --dry-run  # offline: ecoa a entrada, sem chave nem intern
 
 Útil para validar chave/persona sem áudio. Digite `sair` (ou `Ctrl-D`) para encerrar.
 
-Ajustes em `config.yaml` (seção `voice`): `stt_engine` (gemini/whisper), modelo do Whisper
-(`stt.model`), sensibilidade (`silence_threshold`, `silence_ms`), dispositivos
-(`input_device`/`output_device`) e TTS (`tts.engine`, `tts.edge_voice`). Para encerrar:
-fale/**digite** "sair"/"tchau", ou `Ctrl-C`.
-
-> Comparação Whisper local × áudio pro Gemini, e o plano do modo tempo-real (Live API), em
-> [`docs/PLANO_LIVE_API.md`](docs/PLANO_LIVE_API.md).
-
-> Já tem um `local_config.yaml` de antes? Ele não traz a seção `voice` nova — o app usa valores
-> padrão mesmo assim, mas para editar os knobs apague `python/local_config.yaml` (ele é recriado)
-> ou copie a seção `voice:` do `config.yaml`.
-
-**Dependências extras na placa (Debian):** o `sounddevice` precisa do PortAudio
-(`sudo apt install libportaudio2`). Para TTS offline: `pip install piper-tts` e aponte
-`voice.tts.piper_model` para um `.onnx` de voz PT-BR (aí `voice.tts.engine: piper`).
+**Dependência extra na placa (Debian):** o `sounddevice` precisa do PortAudio
+(`sudo apt install libportaudio2`).
 
 ---
 
@@ -122,7 +129,8 @@ roda toda no MPU.
 
 | Arquivo | Papel |
 |---|---|
-| `clippy/live.py` | **Modo principal:** conversa por voz em tempo real (Gemini Live API) |
+| `clippy/live.py` | **Modo principal:** voz em tempo real + máquina de estados (dorme/acorda/timeout) |
+| `clippy/wake.py` | Wake word "clippy" offline (Vosk) |
 | `clippy/brain.py` | Modo texto: Gemini + busca + carinha por tag `[[face:...]]` |
 | `clippy/face.py` | Mostra a expressão (terminal agora → `MatrixFaceDisplay` no MAX7219) |
 | `clippy/expressions.py` | Catálogo fixo de carinhas (espelhado nos bitmaps do MCU) |
@@ -134,7 +142,7 @@ roda toda no MPU.
 
 1. **Base:** conversa por texto com o Gemini + escolha de expressão. ✅
 2. **Voz em tempo real:** Gemini Live API (áudio↔áudio, busca, carinha via `set_face`). ✅
-3. **Wake word + estados:** palavra "clippy", máquina de estados, timer de 30 s, botão no MCU
-   (abrir/fechar a sessão Live).
+3. **Wake word + estados:** palavra "clippy" (Vosk), dorme/acorda, timeout de 10 s. ✅
+   Falta o **botão físico** do MCU (liga/desliga).
 4. **Rosto:** sketch do MCU dirigindo o MAX7219 8×8 via Arduino Router Bridge (`MatrixFaceDisplay`).
 5. **Polimento:** LEDs/matriz da placa, latência, ajuste da persona/voz.
