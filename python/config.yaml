@@ -26,5 +26,5 @@ wake:
   # Vosk model folder. Download a small model from https://alphacephei.com/vosk/models
   # (ex.: vosk-model-small-pt-0.3), unzip, and put the FOLDER path here. Empty = wake word off
   # (goes straight into one live session).
-  model_path: ""
+  model_path: "./vosk-model-small-en-us-0.15"
   phrases: [clip, clipe, clipi, clippy, clique]
