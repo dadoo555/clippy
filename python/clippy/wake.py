@@ -43,7 +43,8 @@ class WakeWord:
     def __init__(self, cfg: dict[str, Any]) -> None:
         wake_cfg = cfg.get("wake", {})
         self._device = cfg.get("live", {}).get("input_device")
-        self._phrases = [p.lower() for p in wake_cfg.get("phrases", ["clip", "clipe", "clipi", "clippy", "clique"])]
+        self._phrases = [p.lower() for p in wake_cfg.get(
+            "phrases", ["clip", "clippy", "clipe", "clipi", "clique", "click", "clubby", "clicky", "flip"])]
         self._debug = bool(wake_cfg.get("debug", True))
 
         raw = wake_cfg.get("model_path", "")
@@ -96,7 +97,13 @@ class WakeWord:
 
     def wait(self) -> bool:
         """Block until a wake phrase is heard. Returns True; False if interrupted (Ctrl-C)."""
-        rec = self._vosk.KaldiRecognizer(self._model, _SAMPLE_RATE)
+        # Grammar mode biases Vosk toward the wake words, so a mispronounced "clippy" is far more
+        # likely to be recognized as one of them (and random speech stays "[unk]" -> fewer false wakes).
+        try:
+            grammar = json.dumps(self._phrases + ["[unk]"])
+            rec = self._vosk.KaldiRecognizer(self._model, _SAMPLE_RATE, grammar)
+        except Exception:
+            rec = self._vosk.KaldiRecognizer(self._model, _SAMPLE_RATE)
         try:
             with sd.RawInputStream(
                 samplerate=_SAMPLE_RATE, channels=1, dtype="int16", blocksize=_FRAME,

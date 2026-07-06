@@ -86,8 +86,25 @@ class MatrixFaceDisplay:
         self._Bridge.call("set_face", expression.value)
 ```
 
-Na Fase 1 usamos `TextFaceDisplay` (imprime a carinha no terminal). Trocar para o hardware é só
-passar `MatrixFaceDisplay()` no lugar — o resto (`brain`, `session`) não muda.
+O modo `live` (`clippy/live.py`) já usa `build_face("auto")`: se a Bridge responder, dirige a
+matriz **e** imprime no terminal; senão, cai só pro terminal com um aviso.
+
+### Fazendo a venv enxergar a Bridge (`arduino.app_utils`)
+
+O módulo `arduino.app_utils` vem do **App Lab da placa** (pacote `arduino_app_bricks`) e **não está
+no PyPI** — o `pip install` não acha. Se você roda o Clippy numa venv própria, aponte-a para o
+`site-packages` de um projeto App Lab que já tenha o pacote (ex.: um projeto irmão), com um `.pth`:
+
+```bash
+echo /home/arduino/OUTRO-PROJETO/python/.venv/lib/python3.13/site-packages > \
+  ~/clippy/python/.venv/lib/python3.13/site-packages/_arduino_bridge.pth
+# teste:
+python -c "from arduino.app_utils import Bridge; print(Bridge.call('clippy_ping', timeout=3))"  # -> 1
+```
+
+Os pacotes próprios do Clippy têm prioridade, então o `.pth` só preenche o que falta (`arduino` e
+suas deps). Alternativa: `pip install arduino-app-bricks` **se** você tiver o índice do App Lab
+configurado; ou criar a venv dentro do fluxo do App Lab.
 
 > ⚠️ Ao adicionar/renomear uma expressão em `expressions.py`, adicione o bitmap correspondente em
 > `FACES[]` no `.ino` com **o mesmo nome**. Nomes desconhecidos caem no rosto `neutro`.

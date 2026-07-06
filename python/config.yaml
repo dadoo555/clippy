@@ -33,5 +33,7 @@ wake:
   #   absoluto, se preferir:  /home/arduino/clippy/vosk-model-small-en-us-0.15
   # Outros modelos: https://alphacephei.com/vosk/models
   model_path: "./vosk-model-small-en-us-0.15"
-  phrases: [clip, clipe, clipi, clippy, clique]
+  # O que o Vosk ouve quando você diz "clippy" (modelo inglês costuma ouvir clip/click/flip/clubby).
+  # Use o [vosk ouviu] '...' do debug para adicionar o que aparecer aí.
+  phrases: [clip, clippy, clipe, clipi, clique, click, clubby, clicky, flip]
   debug: true                      # imprime o que o Vosk ouve (ajuda a ajustar phrases / achar o mic)

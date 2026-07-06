@@ -111,6 +111,7 @@ class LiveClippy:
         # Half-duplex: mute the mic while Gemini talks so its own voice (echo) does not
         # interrupt it. Set false for barge-in (interrupt by talking over it).
         self._half_duplex = bool(live_cfg.get("half_duplex", True))
+        self._client: Any = None  # reused across wake cycles (auth/connection setup is not free)
         self._session: Any = None
         self._audio_in_queue: asyncio.Queue[bytes] | None = None
         self._out_queue: asyncio.Queue[bytes] | None = None
@@ -295,14 +296,15 @@ class LiveClippy:
         live_cfg = self._cfg.get("live", {})
         model = live_cfg.get("model", "gemini-3.1-flash-live-preview")
         api_version = live_cfg.get("api_version", "v1beta")
-        client = genai.Client(
-            api_key=os.environ["GEMINI_API_KEY"], http_options={"api_version": api_version}
-        )
+        if self._client is None:
+            self._client = genai.Client(
+                api_key=os.environ["GEMINI_API_KEY"], http_options={"api_version": api_version}
+            )
         config = _build_config(types, self._cfg)
 
         self._reason = ""
         try:
-            async with client.aio.live.connect(model=model, config=config) as session:
+            async with self._client.aio.live.connect(model=model, config=config) as session:
                 self._session = session
                 self._audio_in_queue = asyncio.Queue()
                 self._out_queue = asyncio.Queue(maxsize=20)
