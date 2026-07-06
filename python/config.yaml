@@ -16,6 +16,7 @@ live:
   api_version: v1beta
   voice: Leda                      # native voice timbre (Leda, Puck, Kore, Charon, Aoede, ...)
   face_tool: true                  # let Gemini pick the face via a set_face function call
+  face: auto                       # auto = matriz MAX7219 se a Bridge responder, senão só terminal | text | matrix
   inactivity_timeout_s: 15         # after this much silence, go back to sleep (wait for "clippy")
   speech_level: 300                # mic amplitude that counts as "you're talking" (keeps it awake)
   half_duplex: true                # mute mic while Gemini talks (kills echo cutting it off; no barge-in)

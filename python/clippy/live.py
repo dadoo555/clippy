@@ -15,6 +15,7 @@ import array
 import asyncio
 import os
 import re
+import signal
 import sys
 import time
 from typing import Any
@@ -23,13 +24,27 @@ import sounddevice as sd
 
 from .env import load_env
 from .expressions import Expression
-from .face import FaceDisplay, TextFaceDisplay
+from .face import FaceDisplay, build_face
 from .settings import load_config
 
 SEND_SAMPLE_RATE = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHANNELS = 1
 CHUNK = 1024
+
+# Map common English/alternate names to our catalog, in case the model doesn't return the exact value.
+_EXPR_ALIASES = {
+    "neutral": Expression.neutro,
+    "happy": Expression.feliz,
+    "very_happy": Expression.muito_feliz, "excited": Expression.muito_feliz,
+    "sad": Expression.triste,
+    "thinking": Expression.pensativo, "thoughtful": Expression.pensativo,
+    "surprised": Expression.surpreso,
+    "confused": Expression.confuso,
+    "wink": Expression.piscada, "winking": Expression.piscada,
+    "love": Expression.amoroso, "loving": Expression.amoroso, "in_love": Expression.amoroso,
+    "sleeping": Expression.dormindo, "asleep": Expression.dormindo, "sleepy": Expression.dormindo,
+}
 
 
 def _build_config(types: Any, cfg: dict[str, Any]) -> Any:
@@ -129,7 +144,9 @@ class LiveClippy:
         stream.start()
         await asyncio.to_thread(self._flush_input, stream)
         try:
-            while True:
+            # Loop exits on self._stop (not on cancellation): closing the stream while a blocking
+            # read is still running in a thread is what caused the segfault on Ctrl-C.
+            while not self._stop.is_set():
                 data, _ov = await asyncio.to_thread(stream.read, CHUNK)
                 chunk = bytes(data)
                 # Half-duplex: while Gemini is talking, drop the mic so its echoed voice is not
@@ -143,7 +160,10 @@ class LiveClippy:
                 if samples and (sum(abs(s) for s in samples) / len(samples)) > self._speech_level:
                     self._last_activity = time.monotonic()
                 if self._out_queue is not None:
-                    await self._out_queue.put(chunk)
+                    try:
+                        self._out_queue.put_nowait(chunk)
+                    except asyncio.QueueFull:
+                        pass
         finally:
             stream.stop()
             stream.close()
@@ -151,8 +171,11 @@ class LiveClippy:
     async def _send_realtime(self) -> None:
         from google.genai import types
 
-        while True:
-            chunk = await self._out_queue.get()  # type: ignore[union-attr]
+        while not self._stop.is_set():
+            try:
+                chunk = await asyncio.wait_for(self._out_queue.get(), 0.2)  # type: ignore[union-attr]
+            except asyncio.TimeoutError:
+                continue
             await self._session.send_realtime_input(
                 audio=types.Blob(data=chunk, mime_type=f"audio/pcm;rate={SEND_SAMPLE_RATE}")
             )
@@ -207,13 +230,18 @@ class LiveClippy:
 
         responses = []
         for fc in tool_call.function_calls or []:
-            print(f"  [função {fc.name}({dict(fc.args or {})})]", file=sys.stderr)
+            args = dict(fc.args or {})
+            print(f"  [função {fc.name}({args})]", file=sys.stderr)
             if fc.name == "set_face":
-                name = (fc.args or {}).get("expression", "neutro")
-                try:
-                    self._face.set_expression(Expression(name))
-                except ValueError:
-                    self._face.set_expression(Expression.neutro)
+                name = str(args.get("expression", "")).strip().lower()
+                expr = _EXPR_ALIASES.get(name)
+                if expr is None:
+                    try:
+                        expr = Expression(name)
+                    except ValueError:
+                        print(f"  [set_face: '{name}' fora do catálogo — mantendo]", file=sys.stderr)
+                if expr is not None:
+                    self._face.set_expression(expr)
             responses.append(types.FunctionResponse(id=fc.id, name=fc.name, response={"ok": True}))
         if responses:
             await self._session.send_tool_response(function_responses=responses)
@@ -225,8 +253,11 @@ class LiveClippy:
         )
         stream.start()
         try:
-            while True:
-                chunk = await self._audio_in_queue.get()  # type: ignore[union-attr]
+            while not self._stop.is_set():
+                try:
+                    chunk = await asyncio.wait_for(self._audio_in_queue.get(), 0.2)  # type: ignore[union-attr]
+                except asyncio.TimeoutError:
+                    continue
                 # Playing Gemini's voice counts as activity: generation (response.data) can finish
                 # long before playback does, so reset the timer while the audio is still being heard.
                 self._last_activity = self._last_play = time.monotonic()
@@ -277,17 +308,32 @@ class LiveClippy:
                 self._out_queue = asyncio.Queue(maxsize=20)
                 self._stop = asyncio.Event()
                 self._last_activity = time.monotonic()
-                tasks = [
-                    asyncio.create_task(self._guard(c))
-                    for c in (self._listen_audio, self._send_realtime, self._receive,
-                              self._play_audio, self._monitor)
-                ]
+                # Signal readiness only now (connection is up): speaking during the connect
+                # handshake would be lost, which is why the first command after waking failed.
+                print("👂 Pode falar!")
+
+                # Ctrl-C triggers a graceful stop instead of a hard cancel that segfaults by
+                # closing an audio stream mid-read.
+                loop = asyncio.get_running_loop()
+                for sig in (signal.SIGINT, signal.SIGTERM):
+                    try:
+                        loop.add_signal_handler(sig, self._stop.set)
+                    except (NotImplementedError, RuntimeError, AttributeError, ValueError):
+                        pass  # not supported (e.g. Windows)
+
+                # Audio tasks own a PortAudio stream: they must exit via self._stop (checked between
+                # reads/writes) and close their stream themselves — never be cancelled mid-call.
+                audio_tasks = [asyncio.create_task(self._guard(c))
+                               for c in (self._listen_audio, self._send_realtime, self._play_audio)]
+                other_tasks = [asyncio.create_task(self._guard(c))
+                               for c in (self._receive, self._monitor)]
                 try:
                     await self._stop.wait()
                 finally:
-                    for t in tasks:
-                        t.cancel()
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                    self._stop.set()
+                    for t in other_tasks:
+                        t.cancel()  # no audio stream held -> safe to cancel
+                    await asyncio.gather(*audio_tasks, *other_tasks, return_exceptions=True)
         except Exception as exc:
             print(f"\n[erro Live] {type(exc).__name__}: {exc}", file=sys.stderr)
             if isinstance(exc, BaseExceptionGroup):
@@ -304,7 +350,8 @@ def run_live(cfg: dict[str, Any] | None = None) -> int:
         print("GEMINI_API_KEY não definida (veja o README / python/.env).", file=sys.stderr)
         return 1
 
-    face: FaceDisplay = TextFaceDisplay()  # MatrixFaceDisplay on the board (MAX7219 via Bridge)
+    # 'auto' drives the MAX7219 matrix if the Arduino Bridge is reachable, else just the terminal.
+    face: FaceDisplay = build_face(cfg.get("live", {}).get("face", "auto"))
 
     # Optional wake word: sleeps until "clippy" is heard, so the API is only used while active.
     wake = None
@@ -325,7 +372,7 @@ def run_live(cfg: dict[str, Any] | None = None) -> int:
                 print('\n💤 dormindo — diga "clippy" para acordar (Ctrl-C para sair)')
                 if not wake.wait():
                     break
-                print("👂 acordei! Pode falar.")
+                print("👂 acordei! Conectando... (espere o 'Pode falar!')")
 
             face.set_expression(Expression.neutro)
             reason = asyncio.run(clippy.run_once())
